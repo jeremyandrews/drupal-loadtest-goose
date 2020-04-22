@@ -1,4 +1,5 @@
 use rand::Rng;
+use scraper::{Html, Selector};
 
 use goose::GooseState;
 use goose::goose::{GooseTaskSet, GooseClient, GooseTask};
@@ -70,10 +71,29 @@ fn drupal_loadtest_login(client: &mut GooseClient) {
     match response {
         Ok(r) => {
             match r.text() {
-                Ok(user_page) => {
-                    println!("{}", user_page);
+                Ok(html) => {
+                    // Extract the form_build_id from the user login form.
+                    let user_page = Html::parse_document(&html);
+                    // @TODO: add error handling for the next three lines.
+                    let selector = Selector::parse(r#"input[name='form_build_id']"#).unwrap();
+                    let input = user_page.select(&selector).next().unwrap();
+                    let form_build_id = input.value().attr("value").unwrap();
+
+                    // Log the user in.
+                    let uid = rand::thread_rng().gen_range(3, 5_002);
+                    let username = format!("user{}", uid);
+                    let params = [
+                        ("name", username.as_str()),
+                        ("pass", "12345"),
+                        ("form_build_id", form_build_id),
+                        ("form_id", "user_login"),
+                        ("op", "Log+in"),
+                    ];
+                    let request_builder = client.goose_post("/user");
+                    let _response = client.goose_send(request_builder.form(&params));
+                    // @TODO: verify that we actually logged in.
                 }
-                // User page shouldn't be empty.
+                // User login page shouldn't be empty.
                 Err(_) => client.set_failure(),
             }
         }
