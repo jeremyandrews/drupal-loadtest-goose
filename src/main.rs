@@ -75,9 +75,9 @@ fn drupal_loadtest_login(client: &mut GooseClient) {
                     // Extract the form_build_id from the user login form.
                     let user_page = Html::parse_document(&html);
                     // @TODO: add error handling for the next three lines.
-                    let selector = Selector::parse(r#"input[name='form_build_id']"#).unwrap();
-                    let input = user_page.select(&selector).next().unwrap();
-                    let form_build_id = input.value().attr("value").unwrap();
+                    let selector = Selector::parse(r#"input[name='form_build_id']"#).expect("failed to parse selector");
+                    let input = user_page.select(&selector).next().expect("failed to find form_build_id in user_page");
+                    let form_build_id = input.value().attr("value").expect("failed to get form_build_id value");
 
                     // Log the user in.
                     let uid = rand::thread_rng().gen_range(3, 5_002);
