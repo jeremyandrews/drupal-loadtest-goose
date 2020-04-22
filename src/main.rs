@@ -59,9 +59,9 @@ fn drupal_loadtest_node_page(client: &mut GooseClient) {
     let _response = client.get(format!("/node/{}", &nid).as_str());
 }
 
-/// View a profile from 3 to 5,002, created by preptest.sh.
+/// View a profile from 2 to 5,001, created by preptest.sh.
 fn drupal_loadtest_profile_page(client: &mut GooseClient) {
-    let uid = rand::thread_rng().gen_range(3, 5_002);
+    let uid = rand::thread_rng().gen_range(2, 5_001);
     let _response = client.get(format!("/user/{}", &uid).as_str());
 }
 
@@ -74,9 +74,15 @@ fn drupal_loadtest_login(client: &mut GooseClient) {
                 Ok(html) => {
                     // Extract the form_build_id from the user login form.
                     let user_page = Html::parse_document(&html);
-                    // @TODO: add error handling for the next three lines.
                     let selector = Selector::parse(r#"input[name='form_build_id']"#).expect("failed to parse selector");
-                    let input = user_page.select(&selector).next().expect("failed to find form_build_id in user_page");
+                    let input = match user_page.select(&selector).next() {
+                        Some(i) => i,
+                        None => {
+                            eprintln!("no form_build_id found on /user");
+                            client.set_failure();
+                            return;
+                        }
+                    };
                     let form_build_id = input.value().attr("value").expect("failed to get form_build_id value");
 
                     // Log the user in.
@@ -104,5 +110,66 @@ fn drupal_loadtest_login(client: &mut GooseClient) {
 /// Post a comment.
 fn drupal_loadtest_post_comment(client: &mut GooseClient) {
     let nid = rand::thread_rng().gen_range(1, 10_000);
-    let _comment_form = client.get(format!("/comment/reply/{}", &nid).as_str());
+    let response = client.get(format!("/node/{}", &nid).as_str());
+    match response {
+        Ok(r) => {
+            match r.text() {
+                Ok(html) => {
+                    // Extract the form_build_id from the user login form.
+                    let comment_page = Html::parse_document(&html);
+
+                    let selector = Selector::parse(r#"input[name='form_build_id']"#).expect("failed to parse form_build_id selector");
+                    let input = match comment_page.select(&selector).next() {
+                        Some(i) => i,
+                        None => {
+                            eprintln!("no form_build_id found on node/{}", &nid);
+                            client.set_failure();
+                            return;
+                        }
+                    };
+                    let form_build_id = input.value().attr("value").expect("failed to get form_build_id value");
+
+                    let selector = Selector::parse(r#"input[name='form_token']"#).expect("failed to parse form_token selector");
+                    let input = match comment_page.select(&selector).next() {
+                        Some(i) => i,
+                        None => {
+                            eprintln!("no form_token found on node/{}", &nid);
+                            client.set_failure();
+                            return;
+                        }
+                    };
+                    let form_token = input.value().attr("value").expect("failed to get form_token value");
+
+                    let selector = Selector::parse(r#"input[name='form_id']"#).expect("failed to parse form_token selector");
+                    let input = match comment_page.select(&selector).next() {
+                        Some(i) => i,
+                        None => {
+                            eprintln!("no form_id found on node/{}", &nid);
+                            client.set_failure();
+                            return;
+                        }
+                    };
+                    let form_id = input.value().attr("value").expect("failed to get form_id value");
+
+                    println!("form_id: {}, form_build_id: {}, form_token: {}", &form_id, &form_build_id, &form_token);
+
+                    let params = [
+                        ("subject", "this is a test comment subject"),
+                        ("comment_body[und][0][value]", "this is a test comment body"),
+                        ("comment_body[und][0][format]", "filtered_html"),
+                        ("form_build_id", form_build_id),
+                        ("form_token", form_token),
+                        ("form_id", form_id),
+                        ("op", "Save"),
+                    ];
+                    let request_builder = client.goose_post(format!("/comment/reply/{}", &nid).as_str());
+                    let _response = client.goose_send(request_builder.form(&params));
+                    // @TODO: verify that we actually posted the comment.
+                }
+                // User login page shouldn't be empty.
+                Err(_) => client.set_failure(),
+            }
+        }
+        Err(_) => (),
+    }
 }
