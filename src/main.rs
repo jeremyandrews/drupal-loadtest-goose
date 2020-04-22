@@ -99,10 +99,13 @@ fn drupal_loadtest_login(client: &mut GooseClient) {
                     let _response = client.goose_send(request_builder.form(&params));
                     // @TODO: verify that we actually logged in.
                 }
-                // User login page shouldn't be empty.
-                Err(_) => client.set_failure(),
+                Err(e) => {
+                    eprintln!("unexpected error when loading /user page: {}", e);
+                    client.set_failure();
+                }
             }
         }
+        // Goose will catch this error.
         Err(_) => (),
     }
 }
@@ -150,12 +153,12 @@ fn drupal_loadtest_post_comment(client: &mut GooseClient) {
                         }
                     };
                     let form_id = input.value().attr("value").expect("failed to get form_id value");
+                    //println!("form_id: {}, form_build_id: {}, form_token: {}", &form_id, &form_build_id, &form_token);
 
-                    println!("form_id: {}, form_build_id: {}, form_token: {}", &form_id, &form_build_id, &form_token);
-
+                    let comment_body = "this is a test comment body";
                     let params = [
                         ("subject", "this is a test comment subject"),
-                        ("comment_body[und][0][value]", "this is a test comment body"),
+                        ("comment_body[und][0][value]", &comment_body),
                         ("comment_body[und][0][format]", "filtered_html"),
                         ("form_build_id", form_build_id),
                         ("form_token", form_token),
@@ -163,13 +166,33 @@ fn drupal_loadtest_post_comment(client: &mut GooseClient) {
                         ("op", "Save"),
                     ];
                     let request_builder = client.goose_post(format!("/comment/reply/{}", &nid).as_str());
-                    let _response = client.goose_send(request_builder.form(&params));
-                    // @TODO: verify that we actually posted the comment.
+                    let response = client.goose_send(request_builder.form(&params));
+                    match response {
+                        Ok(r) => {
+                            match r.text() {
+                                Ok(html) => {
+                                    if !html.contains(&comment_body) {
+                                        eprintln!("no comment showed up after posting to comment/reply/{}", &nid);
+                                        client.set_failure();
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("unexpected error when posting to comment/reply/{}: {}", &nid, e);
+                                    client.set_failure();
+                                }
+                            }
+                        }
+                        // Goose will catch this error.
+                        Err(_) => (),
+                    }
                 }
-                // User login page shouldn't be empty.
-                Err(_) => client.set_failure(),
+                Err(e) => {
+                    eprintln!("unexpected error when loading node/{} page: {}", &nid, e);
+                    client.set_failure();
+                }
             }
         }
+        // Goose will catch this error.
         Err(_) => (),
     }
 }
